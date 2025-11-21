@@ -25,7 +25,7 @@ interface Segment {
   from_station_id: string;
   to_station_id: string;
   geometry: [number, number][];
-  state: 'existing' | 'new' | 'electrified' | 'gauge_change' | 'closed';
+  state: 'planned' | 'existing' | 'new' | 'electrified' | 'gauge_change' | 'closed';
 }
 
 interface MapViewProps {
@@ -54,9 +54,21 @@ export function MapView({ currentYear }: MapViewProps) {
 
   useEffect(() => {
     if (!isLoading) {
-      const data = queryDataForYear(currentYear);
-      setStations(data.stations);
-      setSegments(data.segments);
+      let cancelled = false;
+
+      queryDataForYear(currentYear)
+        .then(data => {
+          if (cancelled) return;
+          setStations(data.stations);
+          setSegments(data.segments);
+        })
+        .catch(err => {
+          console.error('Failed to query map data', err);
+        });
+
+      return () => {
+        cancelled = true;
+      };
     }
   }, [currentYear, isLoading, queryDataForYear]);
 
@@ -240,11 +252,19 @@ export function MapView({ currentYear }: MapViewProps) {
 
     // Render segments first (so they appear below stations)
     segments.forEach(segment => {
+      // Hide planned segments unless explicitly toggled on
+      if (segment.state === 'planned' && !showPlanned) {
+        return;
+      }
+
       // Determine color based on state
       let color = '#000000'; // existing - black
       let weight = 3;
       
-      if (segment.state === 'new') {
+      if (segment.state === 'planned') {
+        color = '#94a3b8'; // slate/grey for planned
+        weight = 3;
+      } else if (segment.state === 'new') {
         color = '#16a34a'; // green
         weight = 4;
       } else if (segment.state === 'electrified') {
@@ -333,11 +353,32 @@ export function MapView({ currentYear }: MapViewProps) {
       const newColor = '#16a34a';
       const closedColor = '#dc2626';
       const existingColor = '#000000';
-      const mockColor = '#eab308';
+      const mockBaseColor = '#eab308';
+      const electrifiedColor = '#ea580c';
+      const gaugeChangeColor = '#9333ea';
+
+      // Determine station color by state, with mock-specific overrides
+      const resolveStationColor = () => {
+        if (isMock) {
+          if (station.state === 'new') return newColor; // mock but newly constructed -> green
+          if (station.state === 'closed') return closedColor;
+          if (station.state === 'electrified') return electrifiedColor;
+          if (station.state === 'gauge_change') return gaugeChangeColor;
+          if (station.state === 'planned') return mockBaseColor; // planned mock stays yellow
+          return mockBaseColor; // existing mock
+        }
+
+        if (station.state === 'planned') return plannedColor;
+        if (station.state === 'new') return newColor;
+        if (station.state === 'closed') return closedColor;
+        if (station.state === 'electrified') return electrifiedColor;
+        if (station.state === 'gauge_change') return gaugeChangeColor;
+        return existingColor;
+      };
+
+      const markerColor = resolveStationColor();
 
       if (isMock) {
-        const markerColor = mockColor;
-
         // Extract radius if available
         let radius = 5; // default radius in km
         if (station.notes) {
@@ -353,7 +394,7 @@ export function MapView({ currentYear }: MapViewProps) {
           
           const circle = L.circle([station.lat, station.lon], {
             radius: radiusMeters,
-            color: markerColor, // yellow
+            color: markerColor,
             fillColor: markerColor,
             fillOpacity: 0.15,
             weight: 2,
@@ -379,17 +420,7 @@ export function MapView({ currentYear }: MapViewProps) {
         layersRef.current.push(marker);
       } else {
         // Regular station
-        let markerColor = existingColor;
-        let fillOpacity = 0.9;
-
-        if (station.state === 'planned') {
-          markerColor = plannedColor;
-          fillOpacity = 0.6;
-        } else if (station.state === 'new') {
-          markerColor = newColor;
-        } else if (station.state === 'closed') {
-          markerColor = closedColor;
-        }
+        let fillOpacity = station.state === 'planned' ? 0.6 : 0.9;
 
         const marker = L.circleMarker([station.lat, station.lon], {
           radius: 4,

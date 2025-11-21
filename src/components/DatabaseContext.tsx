@@ -1,4 +1,20 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import * as duckdb from '@duckdb/duckdb-wasm';
+import duckdbMvpWasm from '@duckdb/duckdb-wasm/dist/duckdb-mvp.wasm?url';
+import duckdbMvpWorker from '@duckdb/duckdb-wasm/dist/duckdb-browser-mvp.worker.js?url';
+import duckdbEhWasm from '@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url';
+import duckdbEhWorker from '@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url';
+
+const DUCKDB_BUNDLES: duckdb.DuckDBBundles = {
+  mvp: {
+    mainModule: duckdbMvpWasm,
+    mainWorker: duckdbMvpWorker,
+  },
+  eh: {
+    mainModule: duckdbEhWasm,
+    mainWorker: duckdbEhWorker,
+  },
+};
 
 interface Station {
   station_id: string;
@@ -65,7 +81,7 @@ interface DatabaseContextType {
   segments: Segment[];
   isLoading: boolean;
   error: string | null;
-  queryDataForYear: (year: number) => { stations: StationWithState[]; segments: SegmentWithState[] };
+  queryDataForYear: (year: number) => Promise<{ stations: StationWithState[]; segments: SegmentWithState[] }>;
 }
 
 interface StationWithState extends Station {
@@ -84,7 +100,7 @@ const DatabaseContext = createContext<DatabaseContextType>({
   segments: [],
   isLoading: true,
   error: null,
-  queryDataForYear: () => ({ stations: [], segments: [] }),
+  queryDataForYear: async () => ({ stations: [], segments: [] }),
 });
 
 export const useDatabase = () => useContext(DatabaseContext);
@@ -92,6 +108,102 @@ export const useDatabase = () => useContext(DatabaseContext);
 interface DatabaseProviderProps {
   children: ReactNode;
 }
+
+const buildAltNameMap = (names: any): { [key: string]: string } => {
+  if (!names || !Array.isArray(names)) return {};
+
+  const altNames: Record<string, string> = {};
+  const langCounts: Record<string, number> = {};
+
+  names.forEach(entry => {
+    const name = (entry as any)?.name;
+    const language = (entry as any)?.language;
+    if (!name || !language) return;
+
+    langCounts[language] = (langCounts[language] ?? 0) + 1;
+    const suffix = langCounts[language] > 1 ? `_${langCounts[language] - 1}` : '';
+    altNames[`name:${language}${suffix}`] = name;
+  });
+
+  return altNames;
+};
+
+const normalizeGeometry = (raw: any): [number, number][] => {
+  if (!raw) return [];
+
+  // Accept JSON-stringified geometry arrays or Feature-like payloads.
+  let data: any = raw;
+  if (typeof raw === 'string') {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+
+  // Allow GeoJSON Feature/FeatureCollection/Geometry objects by pulling coordinates.
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    if (data.type === 'Feature' && data.geometry) {
+      data = data.geometry.coordinates;
+    } else if (data.type === 'FeatureCollection' && Array.isArray(data.features) && data.features[0]?.geometry) {
+      data = data.features[0].geometry.coordinates;
+    } else if (data.type && data.coordinates) {
+      data = data.coordinates;
+    }
+  }
+
+  if (!Array.isArray(data)) return [];
+
+  return data
+    .map((pair: any) => {
+      if (Array.isArray(pair)) {
+        return [Number(pair[0]), Number(pair[1])] as [number, number];
+      }
+      if (pair && typeof pair === 'object') {
+        if ('f0' in pair && 'f1' in pair) {
+          return [Number((pair as any).f0), Number((pair as any).f1)] as [number, number];
+        }
+        if ('lat' in pair && 'lon' in pair) {
+          return [Number((pair as any).lat), Number((pair as any).lon)] as [number, number];
+        }
+      }
+      return [NaN, NaN] as [number, number];
+    })
+    .filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon));
+};
+
+const DEMO_EVENTS: Event[] = [
+  { event_id: 'EVT_0001', event_type: 'station_open', date: '1851-11-01', date_precision: 'month', station_id: 'RU.STN.Moskva-Passazhirskaya-Paveletskaya', description: 'Moscow Passenger opened' },
+  { event_id: 'EVT_0002', event_type: 'station_open', date: '1851-11-01', date_precision: 'month', station_id: 'RU.STN.Sankt-Peterburg-Baltiyskiy', description: 'Saint Petersburg opened' },
+  { event_id: 'EVT_0003', event_type: 'station_open', date: '1903-07-21', date_precision: 'day', station_id: 'RU.STN.Vladivostok', description: 'Vladivostok opened' },
+  { event_id: 'EVT_0004', event_type: 'station_open', date: '1878-05-01', date_precision: 'month', station_id: 'RU.STN.Ekaterinburg-Passazhirskiy', description: 'Yekaterinburg opened' },
+  { event_id: 'EVT_0005', event_type: 'station_open', date: '1893-04-01', date_precision: 'month', station_id: 'RU.STN.Novosibirsk-Glavnyy', description: 'Novosibirsk opened' },
+  { event_id: 'EVT_0006', event_type: 'station_open', date: '1898-08-16', date_precision: 'day', station_id: 'RU.STN.Irkutsk-Passazhirskiy', description: 'Irkutsk closed' },
+  { event_id: 'EVT_0007', event_type: 'station_close', date: '1975-06-01', date_precision: 'month', station_id: 'RU.STN.Vladivostok', description: 'Vladivostok closed' },
+  { event_id: 'EVT_0008', event_type: 'electrification', date: '1935-12-15', date_precision: 'day', station_id: 'RU.STN.Moskva-Passazhirskaya-Paveletskaya', description: 'Moscow electrified' },
+  { event_id: 'EVT_0009', event_type: 'electrification', date: '1936-01-10', date_precision: 'day', station_id: 'RU.STN.Sankt-Peterburg-Baltiyskiy', description: 'Saint Petersburg electrified' },
+  { event_id: 'EVT_0010', event_type: 'station_open', date: '1860-01-01', date_precision: 'year', station_id: 'STN_0007', description: 'Mock station opened' },
+  { event_id: 'EVT_0011', event_type: 'station_open', date: '1896-09-12', date_precision: 'day', station_id: 'RU.STN.Kazan-Passazhirskaya', description: 'Kazan opened' },
+  { event_id: 'EVT_SEG_0001', event_type: 'segment_open', date: '1851-11-01', date_precision: 'month', segment_id: 'SEG_0001', description: 'Moscow-Petersburg segment opened' },
+  { event_id: 'EVT_SEG_0002', event_type: 'segment_open', date: '1916-10-05', date_precision: 'day', segment_id: 'SEG_0002', description: 'Trans-Siberian segment opened' },
+  { event_id: 'EVT_SEG_0003', event_type: 'segment_open', date: '1916-10-05', date_precision: 'day', segment_id: 'SEG_0003', description: 'Trans-Siberian segment opened' },
+  { event_id: 'EVT_SEG_0004', event_type: 'segment_open', date: '1896-10-01', date_precision: 'month', segment_id: 'SEG_0004', description: 'Trans-Siberian segment opened' },
+  { event_id: 'EVT_SEG_0005', event_type: 'segment_open', date: '1898-08-16', date_precision: 'day', segment_id: 'SEG_0005', description: 'Trans-Siberian segment opened' },
+  { event_id: 'EVT_SEG_0006', event_type: 'segment_open', date: '1900-01-01', date_precision: 'year', segment_id: 'SEG_0006', description: 'Northern segment opened' },
+  { event_id: 'EVT_SEG_0007', event_type: 'segment_open', date: '1902-01-01', date_precision: 'year', segment_id: 'SEG_0007', description: 'Western connection opened' },
+  { event_id: 'EVT_SEG_0008', event_type: 'electrification', date: '1935-12-15', date_precision: 'day', segment_id: 'SEG_0001', description: 'Moscow-Petersburg electrified' },
+  { event_id: 'EVT_SEG_0009', event_type: 'segment_close', date: '1975-06-01', date_precision: 'month', segment_id: 'SEG_0003', description: 'Vladivostok segment closed' },
+];
+
+const DEMO_SEGMENTS: Segment[] = [
+  { segment_id: 'SEG_0001', from_station_id: 'RU.STN.Moskva-Passazhirskaya-Paveletskaya', to_station_id: 'RU.STN.Sankt-Peterburg-Baltiyskiy', geometry: [[55.7765, 37.6550], [59.9311, 30.3609]], geometry_quality: 'high' },
+  { segment_id: 'SEG_0002', from_station_id: 'RU.STN.Kazan-Passazhirskaya', to_station_id: 'RU.STN.Ekaterinburg-Passazhirskiy', geometry: [[55.7887, 49.1221], [56.8519, 60.6122]], geometry_quality: 'high' },
+  { segment_id: 'SEG_0003', from_station_id: 'RU.STN.Vladivostok', to_station_id: 'RU.STN.Irkutsk-Passazhirskiy', geometry: [[43.1056, 131.8735], [52.2869, 104.3050]], geometry_quality: 'medium' },
+  { segment_id: 'SEG_0004', from_station_id: 'RU.STN.Ekaterinburg-Passazhirskiy', to_station_id: 'RU.STN.Novosibirsk-Glavnyy', geometry: [[56.8519, 60.6122], [55.0415, 82.9346]], geometry_quality: 'high' },
+  { segment_id: 'SEG_0005', from_station_id: 'RU.STN.Novosibirsk-Glavnyy', to_station_id: 'RU.STN.Irkutsk-Passazhirskiy', geometry: [[55.0415, 82.9346], [52.2869, 104.3050]], geometry_quality: 'medium' },
+  { segment_id: 'SEG_0006', from_station_id: 'RU.STN.Irkutsk-Passazhirskiy', to_station_id: 'STN_0007', geometry: [[52.2869, 104.3050], [60.0, 100.0]], geometry_quality: 'low' },
+  { segment_id: 'SEG_0007', from_station_id: 'RU.STN.Moskva-Passazhirskaya-Paveletskaya', to_station_id: 'RU.STN.Kazan-Passazhirskaya', geometry: [[55.7290973,37.6408132], [55.7887, 49.1221]], geometry_quality: 'high' },
+];
 
 export function DatabaseProvider({ children }: DatabaseProviderProps) {
   const [stations, setStations] = useState<Station[]>([]);
@@ -101,65 +213,7 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Minimal CSV parser that supports quoted fields
-  const parseCSV = (text: string): string[][] => {
-    const rows: string[][] = [];
-    let currentRow: string[] = [];
-    let currentValue = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i];
-      if (inQuotes) {
-        if (char === '"') {
-          if (text[i + 1] === '"') {
-            currentValue += '"';
-            i++;
-          } else {
-            inQuotes = false;
-          }
-        } else {
-          currentValue += char;
-        }
-      } else {
-        if (char === '"') {
-          inQuotes = true;
-        } else if (char === ',') {
-          currentRow.push(currentValue);
-          currentValue = '';
-        } else if (char === '\n') {
-          currentRow.push(currentValue);
-          rows.push(currentRow);
-          currentRow = [];
-          currentValue = '';
-        } else if (char === '\r') {
-          continue;
-        } else {
-          currentValue += char;
-        }
-      }
-    }
-
-    if (currentValue || currentRow.length) {
-      currentRow.push(currentValue);
-      rows.push(currentRow);
-    }
-
-    return rows.filter(row => row.some(cell => cell.trim() !== ''));
-  };
-
-  const parseCSVToObjects = (text: string): Record<string, string>[] => {
-    const rows = parseCSV(text);
-    if (!rows.length) return [];
-    const headers = rows[0].map(h => h.trim());
-    return rows.slice(1).map(row => {
-      const obj: Record<string, string> = {};
-      headers.forEach((header, idx) => {
-        obj[header] = (row[idx] ?? '').trim();
-      });
-      return obj;
-    });
-  };
+  const connectionRef = useRef<duckdb.AsyncDuckDBConnection | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -167,254 +221,252 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         setIsLoading(true);
         setError(null);
 
-        const base = (import.meta as any).env?.BASE_URL || '/';
+        const bundle = await duckdb.selectBundle(DUCKDB_BUNDLES);
+        const worker = new Worker(bundle.mainWorker!);
+        const logger = new duckdb.ConsoleLogger(duckdb.LogLevel.ERROR);
+        const db = new duckdb.AsyncDuckDB(logger, worker);
+        await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
 
+        const conn = await db.connect();
+        connectionRef.current = conn;
+
+        // Relax expression depth to avoid limits when aggregating JSON/structs
+        await conn.query(`SET max_expression_depth TO 5000;`);
+
+        const base = (import.meta as any).env?.BASE_URL || '/';
         const [stationsRes, stationNamesRes] = await Promise.all([
-          fetch(`${base}data/stations.csv`),
-          fetch(`${base}data/station_names.csv`),
+          fetch(`${base}data/stations.parquet`),
+          fetch(`${base}data/station_names.parquet`),
         ]);
 
         if (!stationsRes.ok) {
-          throw new Error(`Failed to load stations.csv (${stationsRes.status})`);
+          throw new Error(`Failed to load stations.parquet (${stationsRes.status})`);
         }
         if (!stationNamesRes.ok) {
-          throw new Error(`Failed to load station_names.csv (${stationNamesRes.status})`);
+          throw new Error(`Failed to load station_names.parquet (${stationNamesRes.status})`);
         }
 
-        const [stationsText, stationNamesText] = await Promise.all([
-          stationsRes.text(),
-          stationNamesRes.text(),
+        const [stationsBuffer, stationNamesBuffer] = await Promise.all([
+          stationsRes.arrayBuffer(),
+          stationNamesRes.arrayBuffer(),
         ]);
 
-        const stationRecords = parseCSVToObjects(stationsText);
-        const stationNameRecords = parseCSVToObjects(stationNamesText);
+        await db.registerFileBuffer('stations.parquet', new Uint8Array(stationsBuffer));
+        await db.registerFileBuffer('station_names.parquet', new Uint8Array(stationNamesBuffer));
 
-        const loadedStations: Station[] = stationRecords
-          .filter(rec => rec.station_id && rec.lat && rec.lon)
-          .map(rec => ({
-            station_id: rec.station_id,
-            name_primary: rec.name_primary || rec.station_id,
-            name_latin: rec.name_latin || undefined,
-            lat: parseFloat(rec.lat),
-            lon: parseFloat(rec.lon),
-            country_code: rec.country_code || undefined,
-            esr_code: rec.esr_code || undefined,
-            osm_node_id: rec.osm_node_id || undefined,
-            osm_way_id: rec.osm_way_id || undefined,
-            osm_relation_id: rec.osm_relation_id || undefined,
-            wikidata_id: rec.wikidata_id || undefined,
-            wikipedia_ru: rec.wikipedia_ru || undefined,
-            parovoz_url: rec.parovoz_url || undefined,
-            railwayz_id: rec.railwayz_id || undefined,
-            current_status: rec.current_status || 'open',
-            geometry_quality: rec.geometry_quality || undefined,
-            notes: rec.notes || undefined,
-            created_at: rec.created_at || undefined,
-            updated_at: rec.updated_at || undefined,
-          }));
+        await conn.query(`CREATE OR REPLACE TABLE stations AS SELECT * FROM read_parquet('stations.parquet');`);
+        await conn.query(`CREATE OR REPLACE TABLE station_names AS SELECT * FROM read_parquet('station_names.parquet');`);
 
-        const loadedStationNames: StationName[] = stationNameRecords
-          .filter(rec => rec.station_id && rec.name && rec.language)
-          .map(rec => ({
-            station_id: rec.station_id,
-            name: rec.name,
-            language: rec.language,
-            valid_from: rec.valid_from || undefined,
-            valid_to: rec.valid_to || undefined,
-            name_type: rec.name_type || undefined,
-            source_id: rec.source_id || undefined,
-            notes: rec.notes || undefined,
-          }));
+        await db.registerFileText('events.json', JSON.stringify(DEMO_EVENTS));
+        await db.registerFileText('segments.json', JSON.stringify(DEMO_SEGMENTS));
+        await conn.query(`CREATE OR REPLACE TABLE events AS SELECT * FROM read_json_auto('events.json');`);
+        await conn.query(`CREATE OR REPLACE TABLE segments AS SELECT * FROM read_json_auto('segments.json');`);
 
-        // Keep mock timelines/segments so the map still has demo flows until real event/segment CSVs exist.
-        const demoEvents: Event[] = [
-          { event_id: 'EVT_0001', event_type: 'station_open', date: '1851-11-01', date_precision: 'month', station_id: 'RU.STN.Moskva-Passazhirskaya-Paveletskaya', description: 'Moscow Passenger opened' },
-          { event_id: 'EVT_0002', event_type: 'station_open', date: '1851-11-01', date_precision: 'month', station_id: 'RU.STN.Sankt-Peterburg-Baltiyskiy', description: 'Saint Petersburg opened' },
-          { event_id: 'EVT_0003', event_type: 'station_open', date: '1903-07-21', date_precision: 'day', station_id: 'RU.STN.Vladivostok', description: 'Vladivostok opened' },
-          { event_id: 'EVT_0004', event_type: 'station_open', date: '1878-05-01', date_precision: 'month', station_id: 'RU.STN.Ekaterinburg-Passazhirskiy', description: 'Yekaterinburg opened' },
-          { event_id: 'EVT_0005', event_type: 'station_open', date: '1893-04-01', date_precision: 'month', station_id: 'RU.STN.Novosibirsk-Glavnyy', description: 'Novosibirsk opened' },
-          { event_id: 'EVT_0006', event_type: 'station_open', date: '1898-08-16', date_precision: 'day', station_id: 'RU.STN.Irkutsk-Passazhirskiy', description: 'Irkutsk closed' },
-          { event_id: 'EVT_0007', event_type: 'station_close', date: '1975-06-01', date_precision: 'month', station_id: 'RU.STN.Vladivostok', description: 'Vladivostok closed' },
-          { event_id: 'EVT_0008', event_type: 'electrification', date: '1935-12-15', date_precision: 'day', station_id: 'RU.STN.Moskva-Passazhirskaya-Paveletskaya', description: 'Moscow electrified' },
-          { event_id: 'EVT_0009', event_type: 'electrification', date: '1936-01-10', date_precision: 'day', station_id: 'RU.STN.Sankt-Peterburg-Baltiyskiy', description: 'Saint Petersburg electrified' },
-          { event_id: 'EVT_0010', event_type: 'station_open', date: '1860-01-01', date_precision: 'year', station_id: 'STN_0007', description: 'Mock station opened' },
-          { event_id: 'EVT_0011', event_type: 'station_open', date: '1896-09-12', date_precision: 'day', station_id: 'RU.STN.Kazan-Passazhirskaya', description: 'Kazan opened' },
-          { event_id: 'EVT_SEG_0001', event_type: 'segment_open', date: '1851-11-01', date_precision: 'month', segment_id: 'SEG_0001', description: 'Moscow-Petersburg segment opened' },
-          { event_id: 'EVT_SEG_0002', event_type: 'segment_open', date: '1916-10-05', date_precision: 'day', segment_id: 'SEG_0002', description: 'Trans-Siberian segment opened' },
-          { event_id: 'EVT_SEG_0003', event_type: 'segment_open', date: '1916-10-05', date_precision: 'day', segment_id: 'SEG_0003', description: 'Trans-Siberian segment opened' },
-          { event_id: 'EVT_SEG_0004', event_type: 'segment_open', date: '1896-10-01', date_precision: 'month', segment_id: 'SEG_0004', description: 'Trans-Siberian segment opened' },
-          { event_id: 'EVT_SEG_0005', event_type: 'segment_open', date: '1898-08-16', date_precision: 'day', segment_id: 'SEG_0005', description: 'Trans-Siberian segment opened' },
-          { event_id: 'EVT_SEG_0006', event_type: 'segment_open', date: '1900-01-01', date_precision: 'year', segment_id: 'SEG_0006', description: 'Northern segment opened' },
-          { event_id: 'EVT_SEG_0007', event_type: 'segment_open', date: '1902-01-01', date_precision: 'year', segment_id: 'SEG_0007', description: 'Western connection opened' },
-          { event_id: 'EVT_SEG_0008', event_type: 'electrification', date: '1935-12-15', date_precision: 'day', segment_id: 'SEG_0001', description: 'Moscow-Petersburg electrified' },
-          { event_id: 'EVT_SEG_0009', event_type: 'segment_close', date: '1975-06-01', date_precision: 'month', segment_id: 'SEG_0003', description: 'Vladivostok segment closed' },
-        ];
+        const stationCount = await conn.query(`SELECT COUNT(*) AS cnt FROM stations;`);
+        const segmentCount = await conn.query(`SELECT COUNT(*) AS cnt FROM segments;`);
 
-        const demoSegments: Segment[] = [
-          { segment_id: 'SEG_0001', from_station_id: 'RU.STN.Moskva-Passazhirskaya-Paveletskaya', to_station_id: 'RU.STN.Sankt-Peterburg-Baltiyskiy', geometry: [[55.7765, 37.6550], [59.9311, 30.3609]], geometry_quality: 'high' },
-          { segment_id: 'SEG_0002', from_station_id: 'RU.STN.Kazan-Passazhirskaya', to_station_id: 'RU.STN.Ekaterinburg-Passazhirskiy', geometry: [[55.7887, 49.1221], [56.8519, 60.6122]], geometry_quality: 'high' },
-          { segment_id: 'SEG_0003', from_station_id: 'RU.STN.Vladivostok', to_station_id: 'RU.STN.Irkutsk-Passazhirskiy', geometry: [[43.1056, 131.8735], [52.2869, 104.3050]], geometry_quality: 'medium' },
-          { segment_id: 'SEG_0004', from_station_id: 'RU.STN.Ekaterinburg-Passazhirskiy', to_station_id: 'RU.STN.Novosibirsk-Glavnyy', geometry: [[56.8519, 60.6122], [55.0415, 82.9346]], geometry_quality: 'high' },
-          { segment_id: 'SEG_0005', from_station_id: 'RU.STN.Novosibirsk-Glavnyy', to_station_id: 'RU.STN.Irkutsk-Passazhirskiy', geometry: [[55.0415, 82.9346], [52.2869, 104.3050]], geometry_quality: 'medium' },
-          { segment_id: 'SEG_0006', from_station_id: 'RU.STN.Irkutsk-Passazhirskiy', to_station_id: 'STN_0007', geometry: [[52.2869, 104.3050], [60.0, 100.0]], geometry_quality: 'low' },
-          { segment_id: 'SEG_0007', from_station_id: 'RU.STN.Moskva-Passazhirskaya-Paveletskaya', to_station_id: 'RU.STN.Kazan-Passazhirskaya', geometry: [[55.7290973,37.6408132], [55.7887, 49.1221]], geometry_quality: 'high' },
-        ];
+        const stationsTable = await conn.query(`SELECT * FROM stations WHERE lat IS NOT NULL AND lon IS NOT NULL;`);
+        const stationNamesTable = await conn.query(`SELECT * FROM station_names WHERE station_id IS NOT NULL AND name IS NOT NULL AND language IS NOT NULL;`);
+
+        const loadedStations: Station[] = stationsTable.toArray().map((row: any) => ({
+          station_id: String(row.station_id),
+          name_primary: row.name_primary || String(row.station_id),
+          name_latin: row.name_latin || undefined,
+          lat: Number(row.lat),
+          lon: Number(row.lon),
+          country_code: row.country_code || undefined,
+          esr_code: row.esr_code || undefined,
+          osm_node_id: row.osm_node_id || undefined,
+          osm_way_id: row.osm_way_id || undefined,
+          osm_relation_id: row.osm_relation_id || undefined,
+          wikidata_id: row.wikidata_id || undefined,
+          wikipedia_ru: row.wikipedia_ru || undefined,
+          parovoz_url: row.parovoz_url || undefined,
+          railwayz_id: row.railwayz_id || undefined,
+          current_status: row.current_status || 'open',
+          geometry_quality: row.geometry_quality || undefined,
+          notes: row.notes || undefined,
+          created_at: row.created_at || undefined,
+          updated_at: row.updated_at || undefined,
+        }));
+
+        const loadedStationNames: StationName[] = stationNamesTable.toArray().map((row: any) => ({
+          station_id: String(row.station_id),
+          name: row.name,
+          language: row.language,
+          valid_from: row.valid_from || undefined,
+          valid_to: row.valid_to || undefined,
+          name_type: row.name_type || undefined,
+          source_id: row.source_id || undefined,
+          notes: row.notes || undefined,
+        }));
 
         setStations(loadedStations);
         setStationNames(loadedStationNames);
-        setEvents(demoEvents); // Keep mock events until real event data provided
-        setSegments(demoSegments); // Keep mock segments until real segment data provided
+        setEvents(DEMO_EVENTS);
+        setSegments(DEMO_SEGMENTS);
       } catch (err: any) {
-        setError(err?.message || 'Failed to load CSV data');
+        setError(err?.message || 'Failed to initialize DuckDB');
       } finally {
         setIsLoading(false);
       }
     };
 
     loadData();
+
+    return () => {
+      (async () => {
+        await connectionRef.current?.close();
+        connectionRef.current = null;
+      })();
+    };
   }, []);
 
-  const queryDataForYear = (year: number): { stations: StationWithState[]; segments: SegmentWithState[] } => {
-    const stationEventMap = new Map<string, Event[]>();
-    events.forEach(event => {
-      if (event.station_id) {
-        if (!stationEventMap.has(event.station_id)) {
-          stationEventMap.set(event.station_id, []);
-        }
-        stationEventMap.get(event.station_id)!.push(event);
-      }
-    });
-
-    const namesByStation = new Map<string, Array<{ name: string; language: string }>>();
-    stationNames.forEach(sn => {
-      if (!namesByStation.has(sn.station_id)) {
-        namesByStation.set(sn.station_id, []);
-      }
-      namesByStation.get(sn.station_id)!.push({ name: sn.name, language: sn.language });
-    });
-
-    const resultStations: StationWithState[] = [];
-
-    stations.forEach(station => {
-      const stationEvents = stationEventMap.get(station.station_id) || [];
-
-      const openEvent = stationEvents
-        .filter(e => e.event_type === 'station_open')
-        .map(e => ({ ...e, year: new Date(e.date).getFullYear() }))
-        .sort((a, b) => b.year - a.year)[0];
-
-      const closeEvent = stationEvents
-        .filter(e => e.event_type === 'station_close')
-        .map(e => ({ ...e, year: new Date(e.date).getFullYear() }))
-        .sort((a, b) => b.year - a.year)[0];
-
-      const electrificationEvent = stationEvents
-        .filter(e => e.event_type === 'electrification')
-        .map(e => ({ ...e, year: new Date(e.date).getFullYear() }))
-        .filter(e => e.year <= year)
-        .sort((a, b) => b.year - a.year)[0];
-
-      const openYear = openEvent ? openEvent.year : station.created_at ? new Date(station.created_at).getFullYear() : Infinity;
-      const closeYear = closeEvent ? closeEvent.year : null;
-
-      // Station built status
-      let state: 'planned' | 'existing' | 'new' | 'electrified' | 'gauge_change' | 'closed';
-      if (openYear === Infinity || openYear > year) {
-        state = 'planned';
-      } else {
-        if (closeYear && closeYear < year) return; // closed before this year
-        if (closeYear && closeYear === year) {
-          state = 'closed';
-        } else if (station.current_status === 'closed') {
-          state = 'closed';
-        } else if (electrificationEvent && electrificationEvent.year === year) {
-          state = 'electrified';
-        } else if (openEvent && openEvent.year === year) {
-          state = 'new';
-        } else {
-          state = 'existing';
-        }
+  const queryDataForYear = useCallback(
+    async (year: number): Promise<{ stations: StationWithState[]; segments: SegmentWithState[] }> => {
+      const conn = connectionRef.current;
+      if (!conn) {
+        return { stations: [], segments: [] };
       }
 
-      const altNames: { [key: string]: string } = {};
-      const stationNamesList = namesByStation.get(station.station_id) || [];
-      const langCounts: { [key: string]: number } = {};
+      const stationsForYearTable = await conn.query(`
+        WITH station_events AS (
+          SELECT
+            s.*,
+            MAX(CASE WHEN e.event_type = 'station_open' THEN EXTRACT(YEAR FROM CAST(e.date AS DATE)) END) AS open_year,
+            MAX(CASE WHEN e.event_type = 'station_close' THEN EXTRACT(YEAR FROM CAST(e.date AS DATE)) END) AS close_year,
+            MAX(CASE WHEN e.event_type = 'electrification' AND EXTRACT(YEAR FROM CAST(e.date AS DATE)) <= ${year} THEN EXTRACT(YEAR FROM CAST(e.date AS DATE)) END) AS electrified_year
+          FROM stations s
+          LEFT JOIN events e ON s.station_id = e.station_id
+          WHERE s.lat IS NOT NULL AND s.lon IS NOT NULL
+          GROUP BY ALL
+        ),
+        station_state AS (
+          SELECT
+            se.*,
+            COALESCE(se.open_year, CAST(EXTRACT(YEAR FROM CAST(se.created_at AS DATE)) AS INTEGER), 99999) AS effective_open_year,
+            CASE
+              WHEN se.open_year IS NULL AND se.created_at IS NULL THEN 'planned'
+              WHEN COALESCE(se.open_year, CAST(EXTRACT(YEAR FROM CAST(se.created_at AS DATE)) AS INTEGER), 99999) > ${year} THEN 'planned'
+              WHEN se.close_year IS NOT NULL AND se.close_year < ${year} THEN NULL
+              WHEN se.close_year IS NOT NULL AND se.close_year = ${year} THEN 'closed'
+              WHEN se.current_status = 'closed' THEN 'closed'
+              WHEN se.electrified_year = ${year} THEN 'electrified'
+              WHEN se.open_year = ${year} THEN 'new'
+              ELSE 'existing'
+            END AS state_label
+          FROM station_events se
+        ),
+        station_names_agg AS (
+          SELECT
+            station_id,
+            list(name) AS names,
+            list(language) AS languages
+          FROM station_names
+          WHERE station_id IS NOT NULL AND name IS NOT NULL AND language IS NOT NULL
+          GROUP BY station_id
+        )
+        SELECT ss.*, sna.names, sna.languages
+        FROM station_state ss
+        LEFT JOIN station_names_agg sna ON ss.station_id = sna.station_id
+        WHERE ss.state_label IS NOT NULL;
+      `);
 
-      for (const { name, language } of stationNamesList) {
-        if (!langCounts[language]) {
-          langCounts[language] = 0;
-        }
-        langCounts[language]++;
-        const suffix = langCounts[language] > 1 ? `_${langCounts[language] - 1}` : '';
-        altNames[`name:${language}${suffix}`] = name;
-      }
+      const stationsForYearRows = stationsForYearTable.toArray();
 
-      resultStations.push({
-        ...station,
-        state,
-        alternative_names: altNames,
-      });
-    });
+      const stationsForYear: StationWithState[] = stationsForYearRows.map((row: any) => ({
+        station_id: String(row.station_id),
+        name_primary: row.name_primary || String(row.station_id),
+        name_latin: row.name_latin || undefined,
+        lat: Number(row.lat),
+        lon: Number(row.lon),
+        country_code: row.country_code || undefined,
+        esr_code: row.esr_code || undefined,
+        osm_node_id: row.osm_node_id || undefined,
+        osm_way_id: row.osm_way_id || undefined,
+        osm_relation_id: row.osm_relation_id || undefined,
+        wikidata_id: row.wikidata_id || undefined,
+        wikipedia_ru: row.wikipedia_ru || undefined,
+        parovoz_url: row.parovoz_url || undefined,
+        railwayz_id: row.railwayz_id || undefined,
+        current_status: row.current_status || 'open',
+        geometry_quality: row.geometry_quality || undefined,
+        notes: row.notes || undefined,
+        created_at: row.created_at || undefined,
+        updated_at: row.updated_at || undefined,
+        state: row.state_label as StationWithState['state'],
+        alternative_names: buildAltNameMap(
+          Array.isArray(row.names) && Array.isArray(row.languages)
+            ? row.names.map((n: any, idx: number) => ({ name: n, language: row.languages[idx] }))
+            : row.names
+        ),
+      }));
 
-    const segmentEventMap = new Map<string, Event[]>();
-    events.forEach(event => {
-      if (event.segment_id) {
-        if (!segmentEventMap.has(event.segment_id)) {
-          segmentEventMap.set(event.segment_id, []);
-        }
-        segmentEventMap.get(event.segment_id)!.push(event);
-      }
-    });
+      const segmentsForYearTable = await conn.query(`
+        WITH base AS (
+          SELECT * FROM segments
+        ),
+        open_years AS (
+          SELECT segment_id, MIN(EXTRACT(YEAR FROM CAST(date AS DATE))) AS open_year
+          FROM events
+          WHERE segment_id IS NOT NULL AND event_type = 'segment_open'
+          GROUP BY segment_id
+        ),
+        close_years AS (
+          SELECT segment_id, MIN(EXTRACT(YEAR FROM CAST(date AS DATE))) AS close_year
+          FROM events
+          WHERE segment_id IS NOT NULL AND event_type = 'segment_close'
+          GROUP BY segment_id
+        ),
+        electrified_years AS (
+          SELECT segment_id, MAX(EXTRACT(YEAR FROM CAST(date AS DATE))) AS electrified_year
+          FROM events
+          WHERE segment_id IS NOT NULL AND event_type = 'electrification' AND EXTRACT(YEAR FROM CAST(date AS DATE)) <= ${year}
+          GROUP BY segment_id
+        )
+        SELECT
+          b.segment_id,
+          b.from_station_id,
+          b.to_station_id,
+          CAST(b.geometry AS VARCHAR) AS geometry_json,
+          b.geometry_quality,
+          o.open_year,
+          c.close_year,
+          el.electrified_year,
+          CASE
+            WHEN ${year} < COALESCE(o.open_year, 0) THEN 'planned'
+            WHEN c.close_year IS NOT NULL AND c.close_year < ${year} THEN NULL
+            WHEN c.close_year IS NOT NULL AND c.close_year = ${year} THEN 'closed'
+            WHEN el.electrified_year = ${year} THEN 'electrified'
+            WHEN o.open_year IS NOT NULL AND o.open_year = ${year} THEN 'new'
+            ELSE 'existing'
+          END AS state_label
+        FROM base b
+        LEFT JOIN open_years o USING (segment_id)
+        LEFT JOIN close_years c USING (segment_id)
+        LEFT JOIN electrified_years el USING (segment_id);
+      `);
 
-    const resultSegments: SegmentWithState[] = [];
+      const segmentRows = segmentsForYearTable.toArray();
 
-    segments.forEach(segment => {
-      const segmentEvents = segmentEventMap.get(segment.segment_id) || [];
+      const segmentsForYear: SegmentWithState[] = segmentRows
+        .filter((row: any) => Boolean(row.state_label))
+        .map((row: any) => ({
+          segment_id: String(row.segment_id),
+          from_station_id: String(row.from_station_id),
+          to_station_id: String(row.to_station_id),
+          geometry: normalizeGeometry(row.geometry_json ?? row.geometry),
+          geometry_source: row.geometry_source || undefined,
+          geometry_quality: row.geometry_quality || undefined,
+          is_current: row.is_current || undefined,
+          notes: row.notes || undefined,
+          state: row.state_label as SegmentWithState['state'],
+        }));
 
-      const openEvent = segmentEvents
-        .filter(e => e.event_type === 'segment_open')
-        .map(e => ({ ...e, year: new Date(e.date).getFullYear() }))
-        .filter(e => e.year <= year)
-        .sort((a, b) => b.year - a.year)[0];
-
-      const closeEvent = segmentEvents
-        .filter(e => e.event_type === 'segment_close')
-        .map(e => ({ ...e, year: new Date(e.date).getFullYear() }))
-        .filter(e => e.year <= year)
-        .sort((a, b) => b.year - a.year)[0];
-
-      const electrificationEvent = segmentEvents
-        .filter(e => e.event_type === 'electrification')
-        .map(e => ({ ...e, year: new Date(e.date).getFullYear() }))
-        .filter(e => e.year <= year)
-        .sort((a, b) => b.year - a.year)[0];
-
-      const openYear = openEvent ? openEvent.year : Infinity;
-      const closeYear = closeEvent ? closeEvent.year : null;
-
-      if (!openEvent) return; // Skip segments that are not yet open
-      if (year < openYear) return;
-      if (closeYear && closeYear < year) return;
-
-      let state: 'existing' | 'new' | 'electrified' | 'gauge_change' | 'closed';
-      if (closeYear && closeYear === year) {
-        state = 'closed';
-      } else if (electrificationEvent && electrificationEvent.year === year) {
-        state = 'electrified';
-      } else if (openEvent && openEvent.year === year) {
-        state = 'new';
-      } else {
-        state = 'existing';
-      }
-
-      resultSegments.push({
-        ...segment,
-        state,
-      });
-    });
-
-    return { stations: resultStations, segments: resultSegments };
-  };
+      return { stations: stationsForYear, segments: segmentsForYear };
+    },
+    [],
+  );
 
   return (
     <DatabaseContext.Provider value={{ stations, stationNames, events, segments, isLoading, error, queryDataForYear }}>

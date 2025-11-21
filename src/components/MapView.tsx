@@ -16,7 +16,7 @@ interface Station {
   osm_node_id?: string;
   osm_way_id?: string;
   osm_relation_id?: string;
-  state: 'existing' | 'new' | 'electrified' | 'gauge_change' | 'closed';
+  state: 'planned' | 'existing' | 'new' | 'electrified' | 'gauge_change' | 'closed';
   alternative_names: { [key: string]: string };
 }
 
@@ -239,10 +239,23 @@ export function MapView({ currentYear }: MapViewProps) {
       layersRef.current.push(polyline);
     });
 
+    // Compute which stations are endpoints of visible segments
+    const endpointStations = new Set<string>();
+    segments.forEach(segment => {
+      endpointStations.add(segment.from_station_id);
+      endpointStations.add(segment.to_station_id);
+    });
+
     // Then render stations
-    if (currentZoom >= stationZoomThreshold) {
-      stations.forEach(station => {
+    stations.forEach(station => {
       const isMock = station.current_status === 'mock';
+      const isEndpoint = endpointStations.has(station.station_id);
+      const isPlanned = station.state === 'planned';
+
+      // Skip non-endpoint stations when zoomed out
+      if (!isEndpoint && currentZoom < stationZoomThreshold) {
+        return;
+      }
       
       // Build popup content
       let popupHTML = `
@@ -328,12 +341,13 @@ export function MapView({ currentYear }: MapViewProps) {
         marker.addTo(mapInstanceRef.current);
         layersRef.current.push(marker);
       } else {
-        // Regular station - simple black marker
+        // Regular station - planned stations in grey, built stations in black
+        const markerColor = isPlanned ? '#94a3b8' : '#000000';
         const marker = L.circleMarker([station.lat, station.lon], {
           radius: 4,
-          color: '#000000',
-          fillColor: '#000000',
-          fillOpacity: 0.9,
+          color: markerColor,
+          fillColor: markerColor,
+          fillOpacity: isPlanned ? 0.6 : 0.9,
           weight: 1,
         });
 
@@ -341,8 +355,7 @@ export function MapView({ currentYear }: MapViewProps) {
         marker.addTo(mapInstanceRef.current);
         layersRef.current.push(marker);
       }
-      });
-    }
+    });
   }, [stations, segments, currentZoom]);
 
   if (isLoading) {

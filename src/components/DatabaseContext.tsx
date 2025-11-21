@@ -69,7 +69,7 @@ interface DatabaseContextType {
 }
 
 interface StationWithState extends Station {
-  state: 'existing' | 'new' | 'electrified' | 'gauge_change' | 'closed';
+  state: 'planned' | 'existing' | 'new' | 'electrified' | 'gauge_change' | 'closed';
   alternative_names: { [key: string]: string };
 }
 
@@ -167,9 +167,11 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         setIsLoading(true);
         setError(null);
 
+        const base = (import.meta as any).env?.BASE_URL || '/';
+
         const [stationsRes, stationNamesRes] = await Promise.all([
-          fetch('/data/stations.csv'),
-          fetch('/data/station_names.csv'),
+          fetch(`${base}data/stations.csv`),
+          fetch(`${base}data/station_names.csv`),
         ]);
 
         if (!stationsRes.ok) {
@@ -224,10 +226,44 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
             notes: rec.notes || undefined,
           }));
 
+        // Keep mock timelines/segments so the map still has demo flows until real event/segment CSVs exist.
+        const demoEvents: Event[] = [
+          { event_id: 'EVT_0001', event_type: 'station_open', date: '1851-11-01', date_precision: 'month', station_id: 'RU.STN.Moskva-Passazhirskaya-Paveletskaya', description: 'Moscow Passenger opened' },
+          { event_id: 'EVT_0002', event_type: 'station_open', date: '1851-11-01', date_precision: 'month', station_id: 'RU.STN.Sankt-Peterburg-Baltiyskiy', description: 'Saint Petersburg opened' },
+          { event_id: 'EVT_0003', event_type: 'station_open', date: '1903-07-21', date_precision: 'day', station_id: 'RU.STN.Vladivostok', description: 'Vladivostok opened' },
+          { event_id: 'EVT_0004', event_type: 'station_open', date: '1878-05-01', date_precision: 'month', station_id: 'RU.STN.Ekaterinburg-Passazhirskiy', description: 'Yekaterinburg opened' },
+          { event_id: 'EVT_0005', event_type: 'station_open', date: '1893-04-01', date_precision: 'month', station_id: 'RU.STN.Novosibirsk-Glavnyy', description: 'Novosibirsk opened' },
+          { event_id: 'EVT_0006', event_type: 'station_open', date: '1898-08-16', date_precision: 'day', station_id: 'RU.STN.Irkutsk-Passazhirskiy', description: 'Irkutsk opened' },
+          { event_id: 'EVT_0007', event_type: 'station_close', date: '1975-06-01', date_precision: 'month', station_id: 'RU.STN.Irkutsk-Passazhirskiy', description: 'Irkutsk closed' },
+          { event_id: 'EVT_0008', event_type: 'electrification', date: '1935-12-15', date_precision: 'day', station_id: 'RU.STN.Moskva-Passazhirskaya-Paveletskaya', description: 'Moscow electrified' },
+          { event_id: 'EVT_0009', event_type: 'electrification', date: '1936-01-10', date_precision: 'day', station_id: 'RU.STN.Sankt-Peterburg-Baltiyskiy', description: 'Saint Petersburg electrified' },
+          { event_id: 'EVT_0010', event_type: 'station_open', date: '1860-01-01', date_precision: 'year', station_id: 'STN_0007', description: 'Mock station opened' },
+          { event_id: 'EVT_0011', event_type: 'station_open', date: '1896-09-12', date_precision: 'day', station_id: 'STN_0008', description: 'Kazan opened' },
+          { event_id: 'EVT_SEG_0001', event_type: 'segment_open', date: '1851-11-01', date_precision: 'month', segment_id: 'SEG_0001', description: 'Moscow-Petersburg segment opened' },
+          { event_id: 'EVT_SEG_0002', event_type: 'segment_open', date: '1916-10-05', date_precision: 'day', segment_id: 'SEG_0002', description: 'Trans-Siberian segment opened' },
+          { event_id: 'EVT_SEG_0003', event_type: 'segment_open', date: '1916-10-05', date_precision: 'day', segment_id: 'SEG_0003', description: 'Trans-Siberian segment opened' },
+          { event_id: 'EVT_SEG_0004', event_type: 'segment_open', date: '1896-10-01', date_precision: 'month', segment_id: 'SEG_0004', description: 'Trans-Siberian segment opened' },
+          { event_id: 'EVT_SEG_0005', event_type: 'segment_open', date: '1898-08-16', date_precision: 'day', segment_id: 'SEG_0005', description: 'Trans-Siberian segment opened' },
+          { event_id: 'EVT_SEG_0006', event_type: 'segment_open', date: '1900-01-01', date_precision: 'year', segment_id: 'SEG_0006', description: 'Northern segment opened' },
+          { event_id: 'EVT_SEG_0007', event_type: 'segment_open', date: '1902-01-01', date_precision: 'year', segment_id: 'SEG_0007', description: 'Western connection opened' },
+          { event_id: 'EVT_SEG_0008', event_type: 'electrification', date: '1935-12-15', date_precision: 'day', segment_id: 'SEG_0001', description: 'Moscow-Petersburg electrified' },
+          { event_id: 'EVT_SEG_0009', event_type: 'segment_close', date: '1975-06-01', date_precision: 'month', segment_id: 'SEG_0005', description: 'Irkutsk segment closed' },
+        ];
+
+        const demoSegments: Segment[] = [
+          { segment_id: 'SEG_0001', from_station_id: 'RU.STN.Moskva-Passazhirskaya-Paveletskaya', to_station_id: 'RU.STN.Sankt-Peterburg-Baltiyskiy', geometry: [[55.7765, 37.6550], [59.9311, 30.3609]], geometry_quality: 'high' },
+          { segment_id: 'SEG_0002', from_station_id: 'RU.STN.Sankt-Peterburg-Baltiyskiy', to_station_id: 'RU.STN.Vladivostok', geometry: [[59.9311, 30.3609], [43.1056, 131.8735]], geometry_quality: 'high' },
+          { segment_id: 'SEG_0003', from_station_id: 'RU.STN.Vladivostok', to_station_id: 'RU.STN.Ekaterinburg-Passazhirskiy', geometry: [[43.1056, 131.8735], [56.8519, 60.6122]], geometry_quality: 'medium' },
+          { segment_id: 'SEG_0004', from_station_id: 'RU.STN.Ekaterinburg-Passazhirskiy', to_station_id: 'RU.STN.Novosibirsk-Glavnyy', geometry: [[56.8519, 60.6122], [55.0415, 82.9346]], geometry_quality: 'high' },
+          { segment_id: 'SEG_0005', from_station_id: 'RU.STN.Novosibirsk-Glavnyy', to_station_id: 'RU.STN.Irkutsk-Passazhirskiy', geometry: [[55.0415, 82.9346], [52.2869, 104.3050]], geometry_quality: 'medium' },
+          { segment_id: 'SEG_0006', from_station_id: 'RU.STN.Irkutsk-Passazhirskiy', to_station_id: 'STN_0007', geometry: [[52.2869, 104.3050], [60.0, 100.0]], geometry_quality: 'low' },
+          { segment_id: 'SEG_0007', from_station_id: 'STN_0007', to_station_id: 'STN_0008', geometry: [[60.0, 100.0], [55.7887, 49.1221]], geometry_quality: 'high' },
+        ];
+
         setStations(loadedStations);
         setStationNames(loadedStationNames);
-        setEvents([]); // CSV files currently do not provide event data
-        setSegments([]); // CSV files currently do not provide segment data
+        setEvents(demoEvents); // Keep mock events until real event data provided
+        setSegments(demoSegments); // Keep mock segments until real segment data provided
       } catch (err: any) {
         setError(err?.message || 'Failed to load CSV data');
       } finally {
@@ -265,13 +301,11 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
       const openEvent = stationEvents
         .filter(e => e.event_type === 'station_open')
         .map(e => ({ ...e, year: new Date(e.date).getFullYear() }))
-        .filter(e => e.year <= year)
         .sort((a, b) => b.year - a.year)[0];
 
       const closeEvent = stationEvents
         .filter(e => e.event_type === 'station_close')
         .map(e => ({ ...e, year: new Date(e.date).getFullYear() }))
-        .filter(e => e.year <= year)
         .sort((a, b) => b.year - a.year)[0];
 
       const electrificationEvent = stationEvents
@@ -280,23 +314,26 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         .filter(e => e.year <= year)
         .sort((a, b) => b.year - a.year)[0];
 
-      const openYear = openEvent ? openEvent.year : station.created_at ? new Date(station.created_at).getFullYear() : -Infinity;
+      const openYear = openEvent ? openEvent.year : station.created_at ? new Date(station.created_at).getFullYear() : Infinity;
       const closeYear = closeEvent ? closeEvent.year : null;
 
-      if (year < openYear) return;
-      if (closeYear && closeYear < year) return;
-
-      let state: 'existing' | 'new' | 'electrified' | 'gauge_change' | 'closed';
-      if (closeYear && closeYear === year) {
-        state = 'closed';
-      } else if (station.current_status === 'closed') {
-        state = 'closed';
-      } else if (electrificationEvent && electrificationEvent.year === year) {
-        state = 'electrified';
-      } else if (openEvent && openEvent.year === year) {
-        state = 'new';
+      // Station built status
+      let state: 'planned' | 'existing' | 'new' | 'electrified' | 'gauge_change' | 'closed';
+      if (openYear === Infinity || openYear > year) {
+        state = 'planned';
       } else {
-        state = 'existing';
+        if (closeYear && closeYear < year) return; // closed before this year
+        if (closeYear && closeYear === year) {
+          state = 'closed';
+        } else if (station.current_status === 'closed') {
+          state = 'closed';
+        } else if (electrificationEvent && electrificationEvent.year === year) {
+          state = 'electrified';
+        } else if (openEvent && openEvent.year === year) {
+          state = 'new';
+        } else {
+          state = 'existing';
+        }
       }
 
       const altNames: { [key: string]: string } = {};

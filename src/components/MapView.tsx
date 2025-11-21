@@ -33,6 +33,7 @@ interface MapViewProps {
 }
 
 export function MapView({ currentYear }: MapViewProps) {
+  const stationZoomThreshold = 6; // hide station markers until this zoom to reduce clutter
   const { queryDataForYear, isLoading } = useDatabase();
   const [stations, setStations] = useState<Station[]>([]);
   const [segments, setSegments] = useState<Segment[]>([]);
@@ -239,7 +240,8 @@ export function MapView({ currentYear }: MapViewProps) {
     });
 
     // Then render stations
-    stations.forEach(station => {
+    if (currentZoom >= stationZoomThreshold) {
+      stations.forEach(station => {
       const isMock = station.current_status === 'mock';
       
       // Build popup content
@@ -339,7 +341,8 @@ export function MapView({ currentYear }: MapViewProps) {
         marker.addTo(mapInstanceRef.current);
         layersRef.current.push(marker);
       }
-    });
+      });
+    }
   }, [stations, segments, currentZoom]);
 
   if (isLoading) {

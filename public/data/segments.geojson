@@ -316,13 +316,25 @@
     },
     {
       "type": "Feature",
-      "geometry": null,
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [
+            56.8348155,
+            35.8937442
+          ],
+          [
+            55.7784041,
+            37.6567616
+          ]
+        ]
+      },
       "properties": {
         "segment_id": "SEG_AUTO_000014",
         "from_station_id": "RU.STN.Tver",
-        "to_station_id": "Москва",
-        "geometry_source": "",
-        "geometry_quality": "",
+        "to_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
+        "geometry_source": "auto_combined_csv",
+        "geometry_quality": "historic_approx",
         "is_current": null,
         "notes": "Auto-generated from russian_railways_from_afonina.csv"
       }
@@ -332,7 +344,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_000015",
-        "from_station_id": "С.-Петербург",
+        "from_station_id": "RU.STN.Sankt-Peterburg-Vitebskiy",
         "to_station_id": "Гатчина",
         "geometry_source": "",
         "geometry_quality": "",
@@ -345,7 +357,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_000016",
-        "from_station_id": "С-Петербург",
+        "from_station_id": "RU.STN.Sankt-Peterburg-Vitebskiy",
         "to_station_id": "Новый Петергоф",
         "geometry_source": "",
         "geometry_quality": "",
@@ -462,7 +474,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_000025",
-        "from_station_id": "Телеграфный пост при ст. Москва",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Владимир",
         "geometry_source": "",
         "geometry_quality": "",
@@ -540,7 +552,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_000031",
-        "from_station_id": "Москва",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Коломна",
         "geometry_source": "",
         "geometry_quality": "",
@@ -553,7 +565,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_000032",
-        "from_station_id": "Москва",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Сергиево",
         "geometry_source": "",
         "geometry_quality": "",
@@ -774,7 +786,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_000049",
-        "from_station_id": "Москва",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Серпухов",
         "geometry_source": "",
         "geometry_quality": "",
@@ -1372,7 +1384,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_000095",
-        "from_station_id": "Москва",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Смоленск",
         "geometry_source": "",
         "geometry_quality": "",
@@ -1464,7 +1476,7 @@
       "properties": {
         "segment_id": "SEG_AUTO_000102",
         "from_station_id": "Рихимяки",
-        "to_station_id": "С.‑Петербург",
+        "to_station_id": "RU.STN.Sankt-Peterburg-Vitebskiy",
         "geometry_source": "",
         "geometry_quality": "",
         "is_current": null,
@@ -1970,8 +1982,8 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_000141",
-        "from_station_id": "С.",
-        "to_station_id": "Петербурго-Варшавcкая",
+        "from_station_id": "RU.STN.Sankt-Peterburg-Vitebskiy",
+        "to_station_id": "Варшавcкая",
         "geometry_source": "",
         "geometry_quality": "",
         "is_current": null,
@@ -5727,7 +5739,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_000430",
-        "from_station_id": "Москва пасс.",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Телеграфный пост",
         "geometry_source": "",
         "geometry_quality": "",
@@ -6767,7 +6779,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_000510",
-        "from_station_id": "Москва",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Брянск",
         "geometry_source": "",
         "geometry_quality": "",
@@ -7274,7 +7286,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_000549",
-        "from_station_id": "Москва",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Бирюлево",
         "geometry_source": "",
         "geometry_quality": "",
@@ -7742,7 +7754,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_000585",
-        "from_station_id": "Москва",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Зилан",
         "geometry_source": "",
         "geometry_quality": "",
@@ -7872,7 +7884,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_000595",
-        "from_station_id": "Москва",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Бескудниково",
         "geometry_source": "",
         "geometry_quality": "",
@@ -8744,7 +8756,7 @@
       "properties": {
         "segment_id": "SEG_AUTO_000662",
         "from_station_id": "Отклоненный путь С.‑Петербург",
-        "to_station_id": "Москва**",
+        "to_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "geometry_source": "",
         "geometry_quality": "",
         "is_current": null,
@@ -9225,7 +9237,7 @@
       "properties": {
         "segment_id": "SEG_AUTO_000699",
         "from_station_id": "Между 4 и 5 верстой С.‑Петербург",
-        "to_station_id": "Москва",
+        "to_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "geometry_source": "",
         "geometry_quality": "",
         "is_current": null,
@@ -9550,7 +9562,7 @@
       "properties": {
         "segment_id": "SEG_AUTO_000724",
         "from_station_id": "Конец участка 1870 г.",
-        "to_station_id": "конец линии Москва — Ярославль",
+        "to_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station — Ярославль",
         "geometry_source": "",
         "geometry_quality": "",
         "is_current": null,
@@ -11330,7 +11342,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_000861",
-        "from_station_id": "Москва Пассажирская",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Мытищи",
         "geometry_source": "",
         "geometry_quality": "",
@@ -12071,7 +12083,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_000918",
-        "from_station_id": "Москва-Пассажирская",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Люберцы",
         "geometry_source": "",
         "geometry_quality": "",
@@ -12097,7 +12109,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_000920",
-        "from_station_id": "Москва-Пассажирская",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Обираловка",
         "geometry_source": "",
         "geometry_quality": "",
@@ -12500,7 +12512,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_000951",
-        "from_station_id": "Москва-Пассажирская",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Царицыно",
         "geometry_source": "",
         "geometry_quality": "",
@@ -13501,7 +13513,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_001028",
-        "from_station_id": "Москва",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Нахабино",
         "geometry_source": "",
         "geometry_quality": "",
@@ -13657,7 +13669,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_001040",
-        "from_station_id": "Москва",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Расторгуево",
         "geometry_source": "",
         "geometry_quality": "",
@@ -14489,7 +14501,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_001104",
-        "from_station_id": "Москва",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Катуары",
         "geometry_source": "",
         "geometry_quality": "",
@@ -14502,7 +14514,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_001105",
-        "from_station_id": "Москва",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Крюково",
         "geometry_source": "",
         "geometry_quality": "",
@@ -15841,7 +15853,7 @@
       "geometry": null,
       "properties": {
         "segment_id": "SEG_AUTO_001208",
-        "from_station_id": "Москва",
+        "from_station_id": "RU.STN.Moscow_Yaroslavsky_railway_station",
         "to_station_id": "Икша",
         "geometry_source": "",
         "geometry_quality": "",

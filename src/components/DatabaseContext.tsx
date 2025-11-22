@@ -90,7 +90,7 @@ interface StationWithState extends Station {
 }
 
 interface SegmentWithState extends Segment {
-  state: 'existing' | 'new' | 'electrified' | 'gauge_change' | 'closed';
+  state: 'planned' | 'existing' | 'new' | 'electrified' | 'gauge_change' | 'closed';
 }
 
 const DatabaseContext = createContext<DatabaseContextType>({
@@ -172,39 +172,6 @@ const normalizeGeometry = (raw: any): [number, number][] => {
     .filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon));
 };
 
-const DEMO_EVENTS: Event[] = [
-  { event_id: 'EVT_0001', event_type: 'station_open', date: '1851-11-01', date_precision: 'month', station_id: 'RU.STN.Moskva-Passazhirskaya-Paveletskaya', description: 'Moscow Passenger opened' },
-  { event_id: 'EVT_0002', event_type: 'station_open', date: '1851-11-01', date_precision: 'month', station_id: 'RU.STN.Sankt-Peterburg-Baltiyskiy', description: 'Saint Petersburg opened' },
-  { event_id: 'EVT_0003', event_type: 'station_open', date: '1903-07-21', date_precision: 'day', station_id: 'RU.STN.Vladivostok', description: 'Vladivostok opened' },
-  { event_id: 'EVT_0004', event_type: 'station_open', date: '1878-05-01', date_precision: 'month', station_id: 'RU.STN.Ekaterinburg-Passazhirskiy', description: 'Yekaterinburg opened' },
-  { event_id: 'EVT_0005', event_type: 'station_open', date: '1893-04-01', date_precision: 'month', station_id: 'RU.STN.Novosibirsk-Glavnyy', description: 'Novosibirsk opened' },
-  { event_id: 'EVT_0006', event_type: 'station_open', date: '1898-08-16', date_precision: 'day', station_id: 'RU.STN.Irkutsk-Passazhirskiy', description: 'Irkutsk closed' },
-  { event_id: 'EVT_0007', event_type: 'station_close', date: '1975-06-01', date_precision: 'month', station_id: 'RU.STN.Vladivostok', description: 'Vladivostok closed' },
-  { event_id: 'EVT_0008', event_type: 'electrification', date: '1935-12-15', date_precision: 'day', station_id: 'RU.STN.Moskva-Passazhirskaya-Paveletskaya', description: 'Moscow electrified' },
-  { event_id: 'EVT_0009', event_type: 'electrification', date: '1936-01-10', date_precision: 'day', station_id: 'RU.STN.Sankt-Peterburg-Baltiyskiy', description: 'Saint Petersburg electrified' },
-  { event_id: 'EVT_0010', event_type: 'station_open', date: '1860-01-01', date_precision: 'year', station_id: 'STN_0007', description: 'Mock station opened' },
-  { event_id: 'EVT_0011', event_type: 'station_open', date: '1896-09-12', date_precision: 'day', station_id: 'RU.STN.Kazan-Passazhirskaya', description: 'Kazan opened' },
-  { event_id: 'EVT_SEG_0001', event_type: 'segment_open', date: '1851-11-01', date_precision: 'month', segment_id: 'SEG_0001', description: 'Moscow-Petersburg segment opened' },
-  { event_id: 'EVT_SEG_0002', event_type: 'segment_open', date: '1916-10-05', date_precision: 'day', segment_id: 'SEG_0002', description: 'Trans-Siberian segment opened' },
-  { event_id: 'EVT_SEG_0003', event_type: 'segment_open', date: '1916-10-05', date_precision: 'day', segment_id: 'SEG_0003', description: 'Trans-Siberian segment opened' },
-  { event_id: 'EVT_SEG_0004', event_type: 'segment_open', date: '1896-10-01', date_precision: 'month', segment_id: 'SEG_0004', description: 'Trans-Siberian segment opened' },
-  { event_id: 'EVT_SEG_0005', event_type: 'segment_open', date: '1898-08-16', date_precision: 'day', segment_id: 'SEG_0005', description: 'Trans-Siberian segment opened' },
-  { event_id: 'EVT_SEG_0006', event_type: 'segment_open', date: '1900-01-01', date_precision: 'year', segment_id: 'SEG_0006', description: 'Northern segment opened' },
-  { event_id: 'EVT_SEG_0007', event_type: 'segment_open', date: '1902-01-01', date_precision: 'year', segment_id: 'SEG_0007', description: 'Western connection opened' },
-  { event_id: 'EVT_SEG_0008', event_type: 'electrification', date: '1935-12-15', date_precision: 'day', segment_id: 'SEG_0001', description: 'Moscow-Petersburg electrified' },
-  { event_id: 'EVT_SEG_0009', event_type: 'segment_close', date: '1975-06-01', date_precision: 'month', segment_id: 'SEG_0003', description: 'Vladivostok segment closed' },
-];
-
-const DEMO_SEGMENTS: Segment[] = [
-  { segment_id: 'SEG_0001', from_station_id: 'RU.STN.Moskva-Passazhirskaya-Paveletskaya', to_station_id: 'RU.STN.Sankt-Peterburg-Baltiyskiy', geometry: [[55.7765, 37.6550], [59.9311, 30.3609]], geometry_quality: 'high' },
-  { segment_id: 'SEG_0002', from_station_id: 'RU.STN.Kazan-Passazhirskaya', to_station_id: 'RU.STN.Ekaterinburg-Passazhirskiy', geometry: [[55.7887, 49.1221], [56.8519, 60.6122]], geometry_quality: 'high' },
-  { segment_id: 'SEG_0003', from_station_id: 'RU.STN.Vladivostok', to_station_id: 'RU.STN.Irkutsk-Passazhirskiy', geometry: [[43.1056, 131.8735], [52.2869, 104.3050]], geometry_quality: 'medium' },
-  { segment_id: 'SEG_0004', from_station_id: 'RU.STN.Ekaterinburg-Passazhirskiy', to_station_id: 'RU.STN.Novosibirsk-Glavnyy', geometry: [[56.8519, 60.6122], [55.0415, 82.9346]], geometry_quality: 'high' },
-  { segment_id: 'SEG_0005', from_station_id: 'RU.STN.Novosibirsk-Glavnyy', to_station_id: 'RU.STN.Irkutsk-Passazhirskiy', geometry: [[55.0415, 82.9346], [52.2869, 104.3050]], geometry_quality: 'medium' },
-  { segment_id: 'SEG_0006', from_station_id: 'RU.STN.Irkutsk-Passazhirskiy', to_station_id: 'STN_0007', geometry: [[52.2869, 104.3050], [60.0, 100.0]], geometry_quality: 'low' },
-  { segment_id: 'SEG_0007', from_station_id: 'RU.STN.Moskva-Passazhirskaya-Paveletskaya', to_station_id: 'RU.STN.Kazan-Passazhirskaya', geometry: [[55.7290973,37.6408132], [55.7887, 49.1221]], geometry_quality: 'high' },
-];
-
 export function DatabaseProvider({ children }: DatabaseProviderProps) {
   const [stations, setStations] = useState<Station[]>([]);
   const [stationNames, setStationNames] = useState<StationName[]>([]);
@@ -234,9 +201,11 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         await conn.query(`SET max_expression_depth TO 5000;`);
 
         const base = (import.meta as any).env?.BASE_URL || '/';
-        const [stationsRes, stationNamesRes] = await Promise.all([
+        const [stationsRes, stationNamesRes, eventsRes, segmentsRes] = await Promise.all([
           fetch(`${base}data/stations.parquet`),
           fetch(`${base}data/station_names.parquet`),
+          fetch(`${base}data/events.parquet`),
+          fetch(`${base}data/segments.geojson`),
         ]);
 
         if (!stationsRes.ok) {
@@ -245,28 +214,51 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         if (!stationNamesRes.ok) {
           throw new Error(`Failed to load station_names.parquet (${stationNamesRes.status})`);
         }
+        if (!eventsRes.ok) {
+          throw new Error(`Failed to load events.parquet (${eventsRes.status})`);
+        }
+        if (!segmentsRes.ok) {
+          throw new Error(`Failed to load segments.geojson (${segmentsRes.status})`);
+        }
 
-        const [stationsBuffer, stationNamesBuffer] = await Promise.all([
+        const [stationsBuffer, stationNamesBuffer, eventsBuffer, segmentsText] = await Promise.all([
           stationsRes.arrayBuffer(),
           stationNamesRes.arrayBuffer(),
+          eventsRes.arrayBuffer(),
+          segmentsRes.text(),
         ]);
 
         await db.registerFileBuffer('stations.parquet', new Uint8Array(stationsBuffer));
         await db.registerFileBuffer('station_names.parquet', new Uint8Array(stationNamesBuffer));
+        await db.registerFileBuffer('events.parquet', new Uint8Array(eventsBuffer));
+        await db.registerFileText('segments.geojson', segmentsText);
 
         await conn.query(`CREATE OR REPLACE TABLE stations AS SELECT * FROM read_parquet('stations.parquet');`);
         await conn.query(`CREATE OR REPLACE TABLE station_names AS SELECT * FROM read_parquet('station_names.parquet');`);
-
-        await db.registerFileText('events.json', JSON.stringify(DEMO_EVENTS));
-        await db.registerFileText('segments.json', JSON.stringify(DEMO_SEGMENTS));
-        await conn.query(`CREATE OR REPLACE TABLE events AS SELECT * FROM read_json_auto('events.json');`);
-        await conn.query(`CREATE OR REPLACE TABLE segments AS SELECT * FROM read_json_auto('segments.json');`);
+        await conn.query(`CREATE OR REPLACE TABLE events AS SELECT * FROM read_parquet('events.parquet');`);
+        await conn.query(`
+          CREATE OR REPLACE TABLE segments AS
+          SELECT 
+            feature['properties']['segment_id']::VARCHAR AS segment_id,
+            feature['properties']['from_station_id']::VARCHAR AS from_station_id,
+            feature['properties']['to_station_id']::VARCHAR AS to_station_id,
+            feature['geometry'] AS geometry,
+            feature['properties']['geometry_source'] AS geometry_source,
+            feature['properties']['geometry_quality'] AS geometry_quality,
+            feature['properties']['is_current'] AS is_current,
+            feature['properties']['notes'] AS notes
+          FROM read_json_auto('segments.geojson') AS root,
+              UNNEST(root.features) AS t(feature)   -- 👈 alias column as "feature"
+          WHERE feature['properties']['segment_id'] IS NOT NULL;
+        `);
 
         const stationCount = await conn.query(`SELECT COUNT(*) AS cnt FROM stations;`);
         const segmentCount = await conn.query(`SELECT COUNT(*) AS cnt FROM segments;`);
 
         const stationsTable = await conn.query(`SELECT * FROM stations WHERE lat IS NOT NULL AND lon IS NOT NULL;`);
         const stationNamesTable = await conn.query(`SELECT * FROM station_names WHERE station_id IS NOT NULL AND name IS NOT NULL AND language IS NOT NULL;`);
+        const eventsTable = await conn.query(`SELECT * FROM events;`);
+        const segmentsTable = await conn.query(`SELECT * FROM segments;`);
 
         const loadedStations: Station[] = stationsTable.toArray().map((row: any) => ({
           station_id: String(row.station_id),
@@ -303,8 +295,19 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
 
         setStations(loadedStations);
         setStationNames(loadedStationNames);
-        setEvents(DEMO_EVENTS);
-        setSegments(DEMO_SEGMENTS);
+        setEvents(eventsTable.toArray());
+        setSegments(
+          segmentsTable.toArray().map((row: any) => ({
+            segment_id: String(row.segment_id),
+            from_station_id: String(row.from_station_id),
+            to_station_id: String(row.to_station_id),
+            geometry: normalizeGeometry(row.geometry),
+            geometry_source: row.geometry_source || undefined,
+            geometry_quality: row.geometry_quality || undefined,
+            is_current: row.is_current || undefined,
+            notes: row.notes || undefined,
+          }))
+        );
       } catch (err: any) {
         setError(err?.message || 'Failed to initialize DuckDB');
       } finally {
@@ -447,7 +450,11 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
         LEFT JOIN electrified_years el USING (segment_id);
       `);
 
+      console.log(segmentsForYearTable);
+
       const segmentRows = segmentsForYearTable.toArray();
+
+      console.log(segmentRows);
 
       const segmentsForYear: SegmentWithState[] = segmentRows
         .filter((row: any) => Boolean(row.state_label))
@@ -462,6 +469,8 @@ export function DatabaseProvider({ children }: DatabaseProviderProps) {
           notes: row.notes || undefined,
           state: row.state_label as SegmentWithState['state'],
         }));
+
+      console.log(segmentsForYear);
 
       return { stations: stationsForYear, segments: segmentsForYear };
     },

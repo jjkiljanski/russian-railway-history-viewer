@@ -148,7 +148,7 @@ export function MapView({ currentYear }: MapViewProps) {
           const radiusMeters = layer.getRadius ? layer.getRadius() : 0;
           const radiusKm = radiusMeters / 1000;
 
-          const payload = `""",,,${latlng.lat.toFixed(4)},${latlng.lng.toFixed(4)},,,,,,,,,,,,,<radius ${radiusKm.toFixed(2)}>"""`;
+          const payload = `,${latlng.lat.toFixed(4)},${latlng.lng.toFixed(4)},${radiusKm.toFixed(2)}`;
           CopyToast(payload);
 
           if (layer.bindPopup) {
